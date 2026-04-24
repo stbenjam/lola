@@ -500,6 +500,42 @@ def fetch_module(
     raise UnsupportedSourceError(source)
 
 
+def fetch_module_named(
+    source: str,
+    dest_dir: Path,
+    module_name: str,
+    module_content_dirname: Optional[str] = None,
+    ref: Optional[str] = None,
+) -> Path:
+    """Fetch a module and place it at dest_dir/<module_name>.
+
+    When multiple modules share a repo, each needs its own directory named
+    after the module rather than the repo. This clones to a temp dir, extracts
+    the content subdirectory if specified, and moves it to the final location.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory(dir=dest_dir) as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        fetched = fetch_module(source, tmp_path, None, ref)
+
+        if module_content_dirname and module_content_dirname != "/":
+            content_src = fetched / module_content_dirname
+            if not content_src.exists() or not content_src.is_dir():
+                raise RuntimeError(
+                    f"Content path '{module_content_dirname}' not found in fetched source"
+                )
+        else:
+            content_src = fetched
+
+        final_path = dest_dir / module_name
+        if final_path.exists():
+            shutil.rmtree(final_path)
+        shutil.copytree(content_src, final_path)
+
+    return final_path
+
+
 def detect_source_type(source: str) -> str:
     """Detect the type of source."""
     for handler in SOURCE_HANDLERS:

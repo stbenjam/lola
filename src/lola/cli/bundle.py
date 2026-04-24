@@ -32,7 +32,7 @@ def _fetch_module_from_marketplace(
         Tuple of (module_path, module_metadata)
     """
     from lola.cli.mod import save_source_info
-    from lola.parsers import fetch_module, detect_source_type
+    from lola.parsers import fetch_module_named, detect_source_type
 
     ref_file = MARKET_DIR / f"{marketplace_name}.yml"
 
@@ -69,11 +69,10 @@ def _fetch_module_from_marketplace(
     content_dirname = module_dict.get("path")
 
     source_type = detect_source_type(repository)
-    module_path = fetch_module(repository, MODULES_DIR, content_dirname)
-    # For folder sources, content_dirname is resolved during fetch,
-    # so don't save it (the module is already at the root of the fetched dir)
-    saved_dirname = None if source_type == "folder" else content_dirname
-    save_source_info(module_path, repository, source_type, saved_dirname)
+    module_path = fetch_module_named(
+        repository, MODULES_DIR, module_name, content_dirname
+    )
+    save_source_info(module_path, repository, source_type, None)
 
     return module_path, module_dict
 

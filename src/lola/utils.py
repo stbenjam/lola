@@ -54,8 +54,14 @@ def resolve_marketplace_source(marketplace_url: str) -> str:
         return str(Path(marketplace_url).parent)
     if parsed.scheme in ("http", "https"):
         path_lower = parsed.path.lower()
-        if path_lower.endswith(".git") or "github.com" in marketplace_url or "gitlab.com" in marketplace_url:
+        hostname = parsed.hostname or ""
+        if path_lower.endswith(".git") or "github.com" in hostname or "gitlab.com" in hostname:
             return marketplace_url
+        if parsed.hostname == "raw.githubusercontent.com":
+            # raw.githubusercontent.com/<owner>/<repo>/<ref>/... → https://github.com/<owner>/<repo>.git
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) >= 2:
+                return f"https://github.com/{parts[0]}/{parts[1]}.git"
         raise ValueError(
             f"Cannot resolve marketplace URL '{marketplace_url}' as a module source. "
             "Modules without a 'repository' field can only be resolved from local or git-based marketplaces."

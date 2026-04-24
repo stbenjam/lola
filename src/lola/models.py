@@ -499,8 +499,52 @@ class Marketplace:
         )
 
     @classmethod
+    def _is_git_url(cls, url: str) -> bool:
+        """Check if a URL points to a git repository."""
+        from urllib.parse import urlparse
+
+        if url.endswith(".git"):
+            return True
+        parsed = urlparse(url)
+        if parsed.scheme in ("git", "ssh"):
+            return True
+        if parsed.scheme in ("http", "https"):
+            hostname = parsed.hostname or ""
+            if "github.com" in hostname or "gitlab.com" in hostname or "bitbucket.org" in hostname:
+                # Only treat as git if path doesn't point to a raw file
+                if not parsed.path.endswith((".yml", ".yaml", ".json")):
+                    return True
+        return False
+
+    @classmethod
+    def _fetch_from_git(cls, url: str) -> dict:
+        """Clone a git repo to a temp dir, find and parse market.yml."""
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            clone_dir = Path(tmp_dir) / "repo"
+            result = subprocess.run(  # nosec B603 B607
+                ["git", "clone", "--depth", "1", "--", url, str(clone_dir)],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise ValueError(f"Failed to clone marketplace repo: {result.stderr.strip()}")
+
+            for candidate in ("market.yml", "market.yaml", "marketplace.yml", "marketplace.yaml"):
+                market_file = clone_dir / candidate
+                if market_file.exists():
+                    with open(market_file) as f:
+                        return yaml.safe_load(f) or {}
+
+            raise ValueError(
+                "No marketplace file found in repo (looked for market.yml, marketplace.yml)"
+            )
+
+    @classmethod
     def from_url(cls, url: str, name: str) -> "Marketplace":
-        """Load marketplace from URL (http/https) or local file path."""
+        """Load marketplace from URL (http/https), git repo, or local file path."""
         from urllib.request import urlopen
         from urllib.error import URLError
 
@@ -509,7 +553,9 @@ class Marketplace:
         parsed = urlparse(url)
         stored_url = url
 
-        if parsed.scheme in ("http", "https"):
+        if cls._is_git_url(url):
+            data = cls._fetch_from_git(url)
+        elif parsed.scheme in ("http", "https"):
             try:
                 with urlopen(url, timeout=10) as response:  # nosec B310 - scheme validated above
                     data = yaml.safe_load(response.read()) or {}

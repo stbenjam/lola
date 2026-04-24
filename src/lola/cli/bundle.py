@@ -181,11 +181,29 @@ def bundle_install_cmd(
     local_modules = get_local_modules_path(project_path)
     registry = get_registry()
     installed_count = 0
+    skipped_count = 0
     failed_modules: list[tuple[str, str]] = []
 
     from lola.cli.mod import load_registered_module
 
     for mod_name in bundle_modules:
+        # Check if already installed for all requested assistants
+        existing = registry.find(mod_name)
+        already_installed = {
+            inst.assistant
+            for inst in existing
+            if inst.scope == "project" and inst.project_path == project_path
+        }
+        needs_assistants = [
+            a for a in assistants_to_install if a not in already_installed
+        ]
+
+        if not needs_assistants:
+            if verbose:
+                console.print(f"[dim]Skipping '{mod_name}' (already installed)[/dim]")
+            skipped_count += 1
+            continue
+
         module_path = MODULES_DIR / mod_name
 
         # Fetch from marketplace if not already registered
@@ -220,7 +238,7 @@ def bundle_install_cmd(
         pre_install = marketplace_hooks.get("pre-install") or module.pre_install_hook
         post_install = marketplace_hooks.get("post-install") or module.post_install_hook
 
-        for asst in assistants_to_install:
+        for asst in needs_assistants:
             try:
                 install_to_assistant(
                     module,
@@ -244,7 +262,7 @@ def bundle_install_cmd(
         # Update version from marketplace metadata
         version = module_dict.get("version") if module_dict else None
         if version:
-            for asst in assistants_to_install:
+            for asst in needs_assistants:
                 installations = registry.find(mod_name)
                 for inst in installations:
                     if (
@@ -258,10 +276,13 @@ def bundle_install_cmd(
         installed_count += 1
 
     console.print()
-    assistants_str = ", ".join(assistants_to_install)
-    console.print(
-        f"[green]Installed {installed_count}/{len(bundle_modules)} modules to {len(assistants_to_install)} assistant(s) ({assistants_str})[/green]"
-    )
+    parts = [
+        f"Installed {installed_count}/{len(bundle_modules)} modules to "
+        f"{len(assistants_to_install)} assistant(s)"
+    ]
+    if skipped_count:
+        parts.append(f"{skipped_count} already installed")
+    console.print(f"[green]{', '.join(parts)}[/green]")
 
     if failed_modules:
         console.print()

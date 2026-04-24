@@ -235,6 +235,71 @@ class TestBundleInstall:
         assert "Installed 1/2 modules" in result.output
         assert "Failures:" in result.output
 
+    def test_install_skips_already_installed(
+        self, cli_runner, tmp_path, marketplace_with_bundles
+    ):
+        """Modules already installed for the same assistant/project are skipped."""
+        from lola.models import Installation
+
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        # Create both modules in MODULES_DIR
+        for mod_name in ["git-workflow", "code-review"]:
+            mod_dir = modules_dir / mod_name
+            mod_dir.mkdir()
+            skills_dir = mod_dir / "skills" / "skill1"
+            skills_dir.mkdir(parents=True)
+            (skills_dir / "SKILL.md").write_text(
+                f"---\ndescription: {mod_name} skill\n---\n\nContent.\n"
+            )
+
+        # Simulate git-workflow already installed for claude-code at this project
+        existing_install = Installation(
+            module_name="git-workflow",
+            assistant="claude-code",
+            scope="project",
+            project_path=str(project_dir),
+            skills=["skill1"],
+        )
+
+        mock_registry = MagicMock()
+        mock_registry.find.side_effect = lambda name: (
+            [existing_install] if name == "git-workflow" else []
+        )
+
+        with (
+            patch("lola.cli.bundle.MARKET_DIR", market_dir),
+            patch("lola.cli.bundle.CACHE_DIR", cache_dir),
+            patch("lola.cli.bundle.MODULES_DIR", modules_dir),
+            patch("lola.cli.bundle.ensure_lola_dirs"),
+            patch("lola.cli.bundle.get_registry", return_value=mock_registry),
+            patch("lola.cli.bundle.is_interactive", return_value=False),
+            patch("lola.cli.bundle.install_to_assistant") as mock_install,
+        ):
+            result = cli_runner.invoke(
+                main,
+                [
+                    "bundle",
+                    "install",
+                    "teamA/engineer",
+                    "-a",
+                    "claude-code",
+                    "-v",
+                    str(project_dir),
+                ],
+            )
+
+        assert result.exit_code == 0
+        # git-workflow skipped, only code-review installed
+        assert "Skipping 'git-workflow'" in result.output
+        assert "already installed" in result.output
+        assert mock_install.call_count == 1
+
     def test_install_help(self, cli_runner):
         """Install subcommand shows help."""
         result = cli_runner.invoke(main, ["bundle", "install", "--help"])

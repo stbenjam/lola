@@ -321,10 +321,29 @@ def bundle_install_cmd(
             console.print()
             total_unmet = sum(len(u) for _, u in modules_with_unmet)
             console.print(
-                f"[bold]Running setup for {total_unmet} unmet "
+                f"[bold]{total_unmet} unmet setup "
                 f"requirement{'s' if total_unmet != 1 else ''} "
-                f"across {len(modules_with_unmet)} module(s)...[/bold]"
+                f"across {len(modules_with_unmet)} module(s):[/bold]"
             )
+            for module, unmet in modules_with_unmet:
+                for dep, _msg in unmet:
+                    console.print(
+                        f"  [red]missing[/red]  {module.name}/{dep.name} "
+                        f"— {dep.description}"
+                    )
+
+            if is_interactive():
+                console.print()
+                if not click.confirm("Run setup now?", default=True):
+                    console.print(
+                        "[dim]Skipped. Run 'lola setup' later to configure.[/dim]"
+                    )
+                    modules_with_unmet = []
+            else:
+                console.print(
+                    "[dim]Run 'lola setup' to configure.[/dim]"
+                )
+                modules_with_unmet = []
 
             for module, unmet in modules_with_unmet:
                 for dep, _msg in unmet:

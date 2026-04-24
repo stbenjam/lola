@@ -55,13 +55,13 @@ class GeminiTarget(MCPSupportMixin, ManagedInstructionsTarget, ManagedSectionTar
         prompt = _convert_to_gemini_args(body)
 
         description_escaped = description.replace("\\", "\\\\").replace('"', '\\"')
-        # Escape """ sequences in prompt to avoid breaking TOML multi-line strings
-        prompt_escaped = prompt.rstrip().replace('"""', r'\"""')
+        # Use literal strings (''') to avoid backslash escape issues in content
+        prompt_cleaned = prompt.rstrip().replace("'''", "' ''")
         toml_lines = [
             f'description = "{description_escaped}"',
-            'prompt = """',
-            prompt_escaped,
-            '"""',
+            "prompt = '''",
+            prompt_cleaned,
+            "'''",
         ]
 
         filename = self.get_command_filename(module_name, cmd_name)

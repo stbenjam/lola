@@ -5,6 +5,7 @@ utils:
 
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from lola.config import LOLA_HOME, MODULES_DIR
 from lola.exceptions import ConfigurationError
@@ -32,3 +33,20 @@ def get_local_modules_path(project_path: Optional[str]) -> Path:
     if not project_path:
         raise ConfigurationError("Project path is required (project-scope only)")
     return Path(project_path) / ".lola" / "modules"
+
+
+def resolve_marketplace_source(marketplace_url: str) -> str:
+    """Resolve a marketplace URL to a source path suitable for fetch_module.
+
+    For file:// URIs and local file paths pointing to a .yml file,
+    returns the parent directory. For other URLs (git, http), returns as-is.
+    """
+    parsed = urlparse(marketplace_url)
+    if parsed.scheme == "file":
+        path = Path(parsed.path)
+        if path.suffix in (".yml", ".yaml"):
+            return str(path.parent)
+        return str(path)
+    if not parsed.scheme and Path(marketplace_url).suffix in (".yml", ".yaml"):
+        return str(Path(marketplace_url).parent)
+    return marketplace_url

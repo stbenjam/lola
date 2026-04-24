@@ -45,7 +45,7 @@ from lola.targets import (
     get_target,
     install_to_assistant,
 )
-from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.utils import ensure_lola_dirs, get_local_modules_path, resolve_marketplace_source
 from lola.cli.utils import handle_lola_error
 
 console = Console()
@@ -104,9 +104,13 @@ def _fetch_from_marketplace(
         raise SystemExit(1)
 
     repository: str | None = module_dict.get("repository")
-    if not repository or not isinstance(repository, str):
-        console.print(f"[red]Module '{module_name}' has no repository URL[/red]")
-        raise SystemExit(1)
+    if not repository:
+        if not marketplace_ref.url:
+            console.print(
+                f"[red]Module '{module_name}' has no repository and marketplace has no source URL[/red]"
+            )
+            raise SystemExit(1)
+        repository = resolve_marketplace_source(marketplace_ref.url)
     content_dirname = module_dict.get("path")
     console.print(f"[green]Found '{module_name}' in '{marketplace_name}'[/green]")
     console.print(f"[dim]Repository: {repository}[/dim]")
@@ -114,7 +118,8 @@ def _fetch_from_marketplace(
     try:
         source_type = detect_source_type(repository)
         module_path = fetch_module(repository, MODULES_DIR, content_dirname)
-        save_source_info(module_path, repository, source_type, content_dirname)
+        saved_dirname = None if source_type == "folder" else content_dirname
+        save_source_info(module_path, repository, source_type, saved_dirname)
         console.print(f"[green]Added {module_name}[/green]")
         return module_path, module_dict
     except Exception as e:

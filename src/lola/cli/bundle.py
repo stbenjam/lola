@@ -17,7 +17,7 @@ from lola.models import Marketplace
 from lola.prompts import is_interactive, select_assistants
 from lola.targets import TARGETS, get_registry
 from lola.targets.install import install_to_assistant
-from lola.utils import ensure_lola_dirs, get_local_modules_path
+from lola.utils import ensure_lola_dirs, get_local_modules_path, resolve_marketplace_source
 
 console = Console()
 
@@ -59,14 +59,21 @@ def _fetch_module_from_marketplace(
         )
 
     repository: str | None = module_dict.get("repository")
-    if not repository or not isinstance(repository, str):
-        raise ValueError(f"Module '{module_name}' has no repository URL")
+    if not repository:
+        if not marketplace_ref.url:
+            raise ValueError(
+                f"Module '{module_name}' has no repository and marketplace has no source URL"
+            )
+        repository = resolve_marketplace_source(marketplace_ref.url)
 
     content_dirname = module_dict.get("path")
 
     source_type = detect_source_type(repository)
     module_path = fetch_module(repository, MODULES_DIR, content_dirname)
-    save_source_info(module_path, repository, source_type, content_dirname)
+    # For folder sources, content_dirname is resolved during fetch,
+    # so don't save it (the module is already at the root of the fetched dir)
+    saved_dirname = None if source_type == "folder" else content_dirname
+    save_source_info(module_path, repository, source_type, saved_dirname)
 
     return module_path, module_dict
 

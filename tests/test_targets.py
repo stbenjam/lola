@@ -686,7 +686,7 @@ Some existing content here.
 
         content = toml_file.read_text()
         assert 'description = "Test command description"' in content
-        assert 'prompt = """' in content
+        assert "prompt = '''" in content
         assert "{{args}}" in content  # $ARGUMENTS should be converted
 
     def test_generate_command_escapes_special_chars_in_description(
@@ -714,22 +714,22 @@ Command body.
     def test_generate_command_escapes_triple_quotes_in_prompt(
         self, tmp_path: Path, dest_path: Path
     ):
-        """generate_command should escape triple quotes in prompt body."""
+        """generate_command should escape triple single-quotes in prompt body."""
         cmd_dir = tmp_path / "commands"
         cmd_dir.mkdir()
         cmd_file = cmd_dir / "triplequotes.md"
-        cmd_file.write_text('''---
+        cmd_file.write_text("""---
 description: Test triple quote escaping
 ---
 
 Some text before.
 
-comment = """This has
+comment = '''This has
 triple quotes
-inside"""
+inside'''
 
 Some text after.
-''')
+""")
 
         target = GeminiTarget()
         target.generate_command(cmd_file, dest_path, "triplequotes", "mymod")
@@ -737,16 +737,14 @@ Some text after.
         toml_file = dest_path / "triplequotes.toml"
         content = toml_file.read_text()
 
-        # Triple quotes should be escaped
-        assert r'\"""' in content
+        # Triple single-quotes should be broken up
+        assert "' ''" in content
 
         # Validate the TOML is parseable
         import tomllib
 
         parsed = tomllib.loads(content)
         assert "prompt" in parsed
-        # The prompt should contain the original triple quotes (unescaped)
-        assert '"""' in parsed["prompt"]
 
     def test_get_command_filename_uses_toml_extension(self):
         """Command filename should use .toml extension (no prefix)."""

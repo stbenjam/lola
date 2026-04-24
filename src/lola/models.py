@@ -512,7 +512,7 @@ class Marketplace:
             errors.append("Missing version for marketplace catalog")
 
         for i, mod in enumerate(self.modules):
-            required = ["name", "description", "version", "repository"]
+            required = ["name", "description", "version"]
             for field_name in required:
                 if field_name not in mod:
                     errors.append(f"Module {i}: missing '{field_name}'")

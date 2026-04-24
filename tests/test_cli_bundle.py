@@ -300,6 +300,98 @@ class TestBundleInstall:
         assert "already installed" in result.output
         assert mock_install.call_count == 1
 
+    def test_install_bundle_no_repository_uses_marketplace_url(
+        self, cli_runner, tmp_path
+    ):
+        """Modules without repository fall back to marketplace source URL."""
+        import yaml
+
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        # Marketplace source is a local folder
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        for mod_name in ["mod-a", "mod-b"]:
+            mod_dir = source_dir / "modules" / mod_name / "skills" / "s1"
+            mod_dir.mkdir(parents=True)
+            (mod_dir / "SKILL.md").write_text(
+                f"---\ndescription: {mod_name} skill\n---\n\nContent.\n"
+            )
+
+        ref_data = {
+            "name": "local",
+            "url": str(source_dir),
+            "enabled": True,
+        }
+        cache_data = {
+            "name": "Local Marketplace",
+            "description": "Local catalog",
+            "version": "1.0.0",
+            "url": str(source_dir),
+            "enabled": True,
+            "modules": [
+                {
+                    "name": "mod-a",
+                    "description": "Module A",
+                    "version": "1.0.0",
+                    "path": "modules/mod-a",
+                },
+                {
+                    "name": "mod-b",
+                    "description": "Module B",
+                    "version": "1.0.0",
+                    "path": "modules/mod-b",
+                },
+            ],
+            "bundles": {
+                "test/all": {
+                    "description": "All modules",
+                    "modules": ["mod-a", "mod-b"],
+                },
+            },
+        }
+
+        with open(market_dir / "local.yml", "w") as f:
+            yaml.dump(ref_data, f)
+        with open(cache_dir / "local.yml", "w") as f:
+            yaml.dump(cache_data, f)
+
+        modules_dir = tmp_path / "modules"
+        modules_dir.mkdir()
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        mock_registry = MagicMock()
+        mock_registry.find.return_value = []
+
+        with (
+            patch("lola.cli.bundle.MARKET_DIR", market_dir),
+            patch("lola.cli.bundle.CACHE_DIR", cache_dir),
+            patch("lola.cli.bundle.MODULES_DIR", modules_dir),
+            patch("lola.cli.bundle.ensure_lola_dirs"),
+            patch("lola.cli.bundle.get_registry", return_value=mock_registry),
+            patch("lola.cli.bundle.is_interactive", return_value=False),
+            patch("lola.cli.bundle.install_to_assistant") as mock_install,
+        ):
+            result = cli_runner.invoke(
+                main,
+                [
+                    "bundle",
+                    "install",
+                    "test/all",
+                    "-a",
+                    "claude-code",
+                    str(project_dir),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Installed 2/2 modules" in result.output
+        assert mock_install.call_count == 2
+
     def test_install_help(self, cli_runner):
         """Install subcommand shows help."""
         result = cli_runner.invoke(main, ["bundle", "install", "--help"])

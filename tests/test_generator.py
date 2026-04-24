@@ -136,7 +136,7 @@ Do something with $ARGUMENTS.
         assert toml_file.exists()
         content = toml_file.read_text()
         assert 'description = "Test command"' in content
-        assert 'prompt = """' in content
+        assert "prompt = '''" in content
 
     def test_command_source_not_exists(self, tmp_path):
         """Return False when command source doesn't exist."""

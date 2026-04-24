@@ -133,7 +133,7 @@ Do something with $ARGUMENTS.
         assert toml_file.exists()
         result = toml_file.read_text()
         assert 'description = "Test command"' in result
-        assert 'prompt = """' in result
+        assert "prompt = '''" in result
         assert "{{args}}" in result
 
     def test_get_command_filename(self):

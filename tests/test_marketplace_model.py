@@ -268,6 +268,26 @@ class TestMarketplaceValidate:
         assert is_valid is True
         assert errors == []
 
+    def test_validate_module_without_repository(self):
+        """Validate that modules without repository field pass validation."""
+        marketplace = Marketplace(
+            name="official",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            description="Official marketplace",
+            modules=[
+                {
+                    "name": "git-tools",
+                    "description": "Git automation",
+                    "version": "1.2.0",
+                    "path": "modules/git-tools",
+                }
+            ],
+        )
+        is_valid, errors = marketplace.validate()
+        assert is_valid is True
+        assert errors == []
+
 
 class TestMarketplaceBundles:
     """Tests for bundle support in Marketplace model."""

@@ -443,6 +443,15 @@ class FolderSourceHandler(SourceHandler):
         ref: Optional[str] = None,
     ) -> Path:
         source_path = Path(source).resolve()
+
+        if module_content_dirname and module_content_dirname != "/":
+            content_path = source_path / module_content_dirname
+            if not content_path.exists() or not content_path.is_dir():
+                raise RuntimeError(
+                    f"Content directory '{module_content_dirname}' not found in {source_path}"
+                )
+            source_path = content_path
+
         module_name = validate_module_name(source_path.name)
 
         final_dir = dest_dir / module_name

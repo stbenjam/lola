@@ -445,7 +445,11 @@ class FolderSourceHandler(SourceHandler):
         source_path = Path(source).resolve()
 
         if module_content_dirname and module_content_dirname != "/":
-            content_path = source_path / module_content_dirname
+            content_path = (source_path / module_content_dirname).resolve()
+            if not str(content_path).startswith(str(source_path) + os.sep):
+                raise SecurityError(
+                    f"Path traversal detected: {module_content_dirname}"
+                )
             if not content_path.exists() or not content_path.is_dir():
                 raise RuntimeError(
                     f"Content directory '{module_content_dirname}' not found in {source_path}"

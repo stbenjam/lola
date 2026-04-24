@@ -238,6 +238,7 @@ def bundle_install_cmd(
         pre_install = marketplace_hooks.get("pre-install") or module.pre_install_hook
         post_install = marketplace_hooks.get("post-install") or module.post_install_hook
 
+        succeeded_assistants = []
         for asst in needs_assistants:
             try:
                 install_to_assistant(
@@ -252,17 +253,20 @@ def bundle_install_cmd(
                     pre_install_script=pre_install,
                     post_install_script=post_install,
                 )
+                succeeded_assistants.append(asst)
             except Exception as e:
                 console.print(
                     f"[red]Failed to install '{mod_name}' to {asst}: {e}[/red]"
                 )
                 failed_modules.append((mod_name, f"install to {asst}: {e}"))
-                continue
+
+        if not succeeded_assistants:
+            continue
 
         # Update version from marketplace metadata
         version = module_dict.get("version") if module_dict else None
         if version:
-            for asst in needs_assistants:
+            for asst in succeeded_assistants:
                 installations = registry.find(mod_name)
                 for inst in installations:
                     if (

@@ -39,7 +39,10 @@ def resolve_marketplace_source(marketplace_url: str) -> str:
     """Resolve a marketplace URL to a source path suitable for fetch_module.
 
     For file:// URIs and local file paths pointing to a .yml file,
-    returns the parent directory. For other URLs (git, http), returns as-is.
+    returns the parent directory. For git URLs, returns as-is.
+
+    Raises:
+        ValueError: If the URL cannot be resolved to a fetchable source.
     """
     parsed = urlparse(marketplace_url)
     if parsed.scheme == "file":
@@ -49,4 +52,12 @@ def resolve_marketplace_source(marketplace_url: str) -> str:
         return str(path)
     if not parsed.scheme and Path(marketplace_url).suffix in (".yml", ".yaml"):
         return str(Path(marketplace_url).parent)
+    if parsed.scheme in ("http", "https"):
+        path_lower = parsed.path.lower()
+        if path_lower.endswith(".git") or "github.com" in marketplace_url or "gitlab.com" in marketplace_url:
+            return marketplace_url
+        raise ValueError(
+            f"Cannot resolve marketplace URL '{marketplace_url}' as a module source. "
+            "Modules without a 'repository' field can only be resolved from local or git-based marketplaces."
+        )
     return marketplace_url

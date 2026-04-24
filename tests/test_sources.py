@@ -346,6 +346,46 @@ class TestFolderSourceHandler:
         assert (result / "new.txt").exists()
         assert not (result / "old.txt").exists()
 
+    def test_fetch_with_content_dirname(self, tmp_path):
+        """Fetch extracts subdirectory when module_content_dirname is set."""
+        source_dir = tmp_path / "repo"
+        mod_dir = source_dir / "modules" / "mymod"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("skill content")
+        (source_dir / "README.md").write_text("repo readme")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        result = self.handler.fetch(str(source_dir), dest_dir, "modules/mymod")
+
+        assert result.name == "mymod"
+        assert (result / "SKILL.md").exists()
+        assert not (result / "README.md").exists()
+
+    def test_fetch_content_dirname_not_found(self, tmp_path):
+        """Fetch raises when content_dirname doesn't exist."""
+        source_dir = tmp_path / "repo"
+        source_dir.mkdir()
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        with pytest.raises(RuntimeError, match="Content directory"):
+            self.handler.fetch(str(source_dir), dest_dir, "nonexistent/path")
+
+    def test_fetch_rejects_path_traversal(self, tmp_path):
+        """Fetch rejects content_dirname that escapes the source directory."""
+        source_dir = tmp_path / "repo"
+        source_dir.mkdir()
+        (tmp_path / "secret").mkdir()
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+
+        with pytest.raises(SecurityError, match="Path traversal"):
+            self.handler.fetch(str(source_dir), dest_dir, "../../etc")
+
 
 class TestDetectSourceType:
     """Tests for detect_source_type()."""

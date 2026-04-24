@@ -411,6 +411,23 @@ class TestMarketplaceBundles:
         assert is_valid is False
         assert any("modules list is empty" in e for e in errors)
 
+    def test_validate_bundle_malformed_data(self):
+        """Bundle with non-dict value fails validation gracefully."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            modules=[],
+            bundles={
+                "bad/bundle": None,
+                "also-bad": "just a string",
+            },
+        )
+        is_valid, errors = marketplace.validate()
+        assert is_valid is False
+        assert any("expected a mapping" in e for e in errors)
+        assert len([e for e in errors if "expected a mapping" in e]) == 2
+
 
 class TestMarketplaceSerialization:
     """Tests for to_reference_dict() and to_cache_dict()."""

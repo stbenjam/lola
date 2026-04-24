@@ -521,6 +521,11 @@ class Marketplace:
         for bundle_name, bundle_data in self.bundles.items():
             if not bundle_name:
                 errors.append("Bundle name cannot be empty")
+            if not isinstance(bundle_data, dict):
+                errors.append(
+                    f"Bundle '{bundle_name}': expected a mapping, got {type(bundle_data).__name__}"
+                )
+                continue
             bundle_modules = bundle_data.get("modules", [])
             if not bundle_modules:
                 errors.append(f"Bundle '{bundle_name}': modules list is empty")

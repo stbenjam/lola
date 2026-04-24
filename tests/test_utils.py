@@ -9,6 +9,7 @@ from lola.exceptions import ConfigurationError
 from lola.utils import (
     ensure_lola_dirs,
     get_local_modules_path,
+    resolve_marketplace_source,
 )
 
 
@@ -92,3 +93,47 @@ class TestGetLocalModulesPath:
         path = get_local_modules_path(str(tmp_path))
 
         assert isinstance(path, Path)
+
+
+class TestResolveMarketplaceSource:
+    """Tests for resolve_marketplace_source()."""
+
+    def test_file_uri_yml(self):
+        """file:// URI pointing to .yml returns parent directory."""
+        result = resolve_marketplace_source("file:///home/user/repo/market.yml")
+        assert result == "/home/user/repo"
+
+    def test_file_uri_directory(self):
+        """file:// URI pointing to directory returns as-is."""
+        result = resolve_marketplace_source("file:///home/user/repo")
+        assert result == "/home/user/repo"
+
+    def test_local_path_yml(self):
+        """Local path to .yml returns parent directory."""
+        result = resolve_marketplace_source("/home/user/repo/market.yaml")
+        assert result == "/home/user/repo"
+
+    def test_local_path_non_yml(self):
+        """Local path without .yml suffix returns as-is."""
+        result = resolve_marketplace_source("/home/user/repo")
+        assert result == "/home/user/repo"
+
+    def test_git_url_passes_through(self):
+        """Git URL passes through unchanged."""
+        url = "https://github.com/org/repo.git"
+        assert resolve_marketplace_source(url) == url
+
+    def test_github_url_passes_through(self):
+        """GitHub URL without .git suffix passes through."""
+        url = "https://github.com/org/repo"
+        assert resolve_marketplace_source(url) == url
+
+    def test_gitlab_url_passes_through(self):
+        """GitLab URL passes through."""
+        url = "https://gitlab.com/org/repo.git"
+        assert resolve_marketplace_source(url) == url
+
+    def test_https_non_git_url_raises(self):
+        """HTTPS URL that isn't a git repo raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot resolve marketplace URL"):
+            resolve_marketplace_source("https://example.com/catalog.yml")

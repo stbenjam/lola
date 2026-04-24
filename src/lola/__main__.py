@@ -14,6 +14,7 @@ from lola.cli.install import (
     uninstall_cmd,
     update_cmd,
 )
+from lola.cli.bundle import bundle
 from lola.cli.market import market
 from lola.cli.mod import mod
 from lola.cli.sync import sync_cmd
@@ -54,6 +55,7 @@ def main(ctx, version):
 # Register command groups
 main.add_command(mod)
 main.add_command(market)
+main.add_command(bundle)
 
 # Register top-level commands
 main.add_command(install_cmd)

@@ -410,6 +410,59 @@ def marketplace_with_modules(tmp_path):
 
 
 @pytest.fixture
+def marketplace_with_bundles(tmp_path):
+    """Create a marketplace with test modules and bundles."""
+    import yaml
+
+    market_dir = tmp_path / "market"
+    cache_dir = market_dir / "cache"
+    market_dir.mkdir(parents=True)
+    cache_dir.mkdir(parents=True)
+
+    ref_data = {
+        "name": "official",
+        "url": "https://example.com/market.yml",
+        "enabled": True,
+    }
+    cache_data = {
+        "name": "Official Marketplace",
+        "description": "Official catalog",
+        "version": "1.0.0",
+        "url": "https://example.com/market.yml",
+        "enabled": True,
+        "modules": [
+            {
+                "name": "git-workflow",
+                "description": "Git workflow automation",
+                "version": "1.0.0",
+                "repository": "https://github.com/org/skills.git",
+                "path": "modules/git-workflow",
+            },
+            {
+                "name": "code-review",
+                "description": "Code review tools",
+                "version": "1.0.0",
+                "repository": "https://github.com/org/skills.git",
+                "path": "modules/code-review",
+            },
+        ],
+        "bundles": {
+            "teamA/engineer": {
+                "description": "Standard engineer toolkit for Team A",
+                "modules": ["git-workflow", "code-review"],
+            },
+        },
+    }
+
+    with open(market_dir / "official.yml", "w") as f:
+        yaml.dump(ref_data, f)
+    with open(cache_dir / "official.yml", "w") as f:
+        yaml.dump(cache_data, f)
+
+    return {"market_dir": market_dir, "cache_dir": cache_dir}
+
+
+@pytest.fixture
 def marketplace_disabled(tmp_path):
     """Create a disabled marketplace."""
     import yaml

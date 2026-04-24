@@ -6,8 +6,8 @@ completions:
 import click
 from click.shell_completion import CompletionItem
 
-from lola.config import MODULES_DIR, MARKET_DIR, INSTALLED_FILE
-from lola.models import InstallationRegistry
+from lola.config import MODULES_DIR, MARKET_DIR, CACHE_DIR, INSTALLED_FILE
+from lola.models import InstallationRegistry, Marketplace
 
 
 def complete_module_names(ctx, param, incomplete):
@@ -38,6 +38,25 @@ def complete_marketplace_names(ctx, param, incomplete):
             if f.stem.startswith(incomplete)
         ]
         return marketplaces
+    except Exception:
+        return []
+
+
+def complete_bundle_names(ctx, param, incomplete):
+    """Complete bundle names from marketplace caches."""
+    if not CACHE_DIR.exists():
+        return []
+
+    try:
+        bundle_names: set[str] = set()
+        for cache_file in CACHE_DIR.glob("*.yml"):
+            marketplace = Marketplace.from_cache(cache_file)
+            bundle_names.update(marketplace.bundles.keys())
+        return [
+            CompletionItem(name)
+            for name in sorted(bundle_names)
+            if name.startswith(incomplete)
+        ]
     except Exception:
         return []
 

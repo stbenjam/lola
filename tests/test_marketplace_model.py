@@ -269,6 +269,129 @@ class TestMarketplaceValidate:
         assert errors == []
 
 
+class TestMarketplaceBundles:
+    """Tests for bundle support in Marketplace model."""
+
+    def test_from_cache_with_bundles(self, tmp_path):
+        """Load marketplace from cache with bundles."""
+        cache_file = tmp_path / "market.yml"
+        cache_file.write_text(
+            "name: Test\n"
+            "version: 1.0.0\n"
+            "url: https://example.com/market.yml\n"
+            "modules:\n"
+            "  - name: git-tools\n"
+            "    description: Git automation\n"
+            "    version: 1.0.0\n"
+            "    repository: https://github.com/test/git.git\n"
+            "bundles:\n"
+            "  teamA/engineer:\n"
+            "    description: Engineer toolkit\n"
+            "    modules: [git-tools]\n"
+        )
+        marketplace = Marketplace.from_cache(cache_file)
+        assert "teamA/engineer" in marketplace.bundles
+        assert marketplace.bundles["teamA/engineer"]["description"] == "Engineer toolkit"
+        assert marketplace.bundles["teamA/engineer"]["modules"] == ["git-tools"]
+
+    def test_from_cache_without_bundles_defaults_to_empty(self, tmp_path):
+        """Cache without bundles key defaults to empty dict."""
+        cache_file = tmp_path / "market.yml"
+        cache_file.write_text(
+            "name: Test\nversion: 1.0.0\nurl: https://example.com/m.yml\nmodules: []\n"
+        )
+        marketplace = Marketplace.from_cache(cache_file)
+        assert marketplace.bundles == {}
+
+    def test_from_url_with_bundles(self, tmp_path):
+        """Load marketplace from local file with bundles."""
+        market_file = tmp_path / "market.yml"
+        market_file.write_text(
+            "name: Test\n"
+            "version: 1.0.0\n"
+            "modules:\n"
+            "  - name: mod1\n"
+            "    description: Module 1\n"
+            "    version: 1.0.0\n"
+            "    repository: https://github.com/test/mod1.git\n"
+            "bundles:\n"
+            "  team/dev:\n"
+            "    description: Dev bundle\n"
+            "    modules: [mod1]\n"
+        )
+        marketplace = Marketplace.from_url(str(market_file), "test")
+        assert "team/dev" in marketplace.bundles
+        assert marketplace.bundles["team/dev"]["modules"] == ["mod1"]
+
+    def test_validate_valid_bundles(self):
+        """Bundles referencing existing modules pass validation."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            modules=[
+                {
+                    "name": "git-tools",
+                    "description": "Git",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/t/g.git",
+                },
+            ],
+            bundles={
+                "teamA/engineer": {
+                    "description": "Engineer toolkit",
+                    "modules": ["git-tools"],
+                },
+            },
+        )
+        is_valid, errors = marketplace.validate()
+        assert is_valid is True
+        assert errors == []
+
+    def test_validate_bundle_unknown_module(self):
+        """Bundle referencing unknown module fails validation."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            modules=[
+                {
+                    "name": "git-tools",
+                    "description": "Git",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/t/g.git",
+                },
+            ],
+            bundles={
+                "teamA/engineer": {
+                    "description": "Engineer toolkit",
+                    "modules": ["git-tools", "nonexistent"],
+                },
+            },
+        )
+        is_valid, errors = marketplace.validate()
+        assert is_valid is False
+        assert any("references unknown module 'nonexistent'" in e for e in errors)
+
+    def test_validate_bundle_empty_modules(self):
+        """Bundle with empty modules list fails validation."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            modules=[],
+            bundles={
+                "teamA/empty": {
+                    "description": "Empty bundle",
+                    "modules": [],
+                },
+            },
+        )
+        is_valid, errors = marketplace.validate()
+        assert is_valid is False
+        assert any("modules list is empty" in e for e in errors)
+
+
 class TestMarketplaceSerialization:
     """Tests for to_reference_dict() and to_cache_dict()."""
 
@@ -299,3 +422,30 @@ class TestMarketplaceSerialization:
         assert cache_dict["description"] == "Test marketplace description"
         assert cache_dict["url"] == "https://example.com/market.yml"
         assert cache_dict["version"] == "1.0.0"
+
+    def test_to_cache_dict_with_bundles(self):
+        """Cache dict includes bundles when present."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+            bundles={
+                "teamA/engineer": {
+                    "description": "Engineer toolkit",
+                    "modules": ["git-tools"],
+                },
+            },
+        )
+        cache_dict = marketplace.to_cache_dict()
+        assert "bundles" in cache_dict
+        assert "teamA/engineer" in cache_dict["bundles"]
+
+    def test_to_cache_dict_without_bundles(self):
+        """Cache dict omits bundles key when empty."""
+        marketplace = Marketplace(
+            name="test",
+            url="https://example.com/market.yml",
+            version="1.0.0",
+        )
+        cache_dict = marketplace.to_cache_dict()
+        assert "bundles" not in cache_dict

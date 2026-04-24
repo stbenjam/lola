@@ -809,3 +809,228 @@ class TestMarketplaceRegistrySelectMarketplace:
             result = registry.select_marketplace("test", matches)
 
         assert result is None
+
+
+class TestMarketplaceRegistrySearchBundle:
+    """Tests for MarketplaceRegistry.search_bundle()."""
+
+    def test_search_bundle_found(self, marketplace_with_bundles):
+        """Find bundle in marketplace."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        result = registry.search_bundle("teamA/engineer")
+
+        assert result is not None
+        bundle_data, marketplace_name = result
+        assert marketplace_name == "official"
+        assert bundle_data["modules"] == ["git-workflow", "code-review"]
+
+    def test_search_bundle_not_found(self, marketplace_with_bundles):
+        """Bundle not found in any marketplace."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        result = registry.search_bundle("nonexistent/bundle")
+
+        assert result is None
+
+    def test_search_bundle_disabled_marketplace(self, tmp_path):
+        """Skip disabled marketplaces when searching bundles."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        ref = {
+            "name": "disabled",
+            "url": "https://example.com/disabled.yml",
+            "enabled": False,
+        }
+        cache = {
+            "name": "Disabled",
+            "version": "1.0.0",
+            "url": "https://example.com/disabled.yml",
+            "modules": [
+                {
+                    "name": "mod1",
+                    "description": "Module 1",
+                    "version": "1.0.0",
+                    "repository": "https://github.com/t/m.git",
+                }
+            ],
+            "bundles": {
+                "team/dev": {
+                    "description": "Dev bundle",
+                    "modules": ["mod1"],
+                },
+            },
+        }
+
+        with open(market_dir / "disabled.yml", "w") as f:
+            yaml.dump(ref, f)
+        with open(cache_dir / "disabled.yml", "w") as f:
+            yaml.dump(cache, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        result = registry.search_bundle("team/dev")
+        assert result is None
+
+
+class TestMarketplaceRegistrySearchBundleAll:
+    """Tests for MarketplaceRegistry.search_bundle_all()."""
+
+    def test_search_bundle_all_single_match(self, marketplace_with_bundles):
+        """Find bundle in single marketplace."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        matches = registry.search_bundle_all("teamA/engineer")
+
+        assert len(matches) == 1
+        bundle_data, marketplace_name = matches[0]
+        assert marketplace_name == "official"
+        assert bundle_data["modules"] == ["git-workflow", "code-review"]
+
+    def test_search_bundle_all_multiple_matches(self, tmp_path):
+        """Find bundle in multiple marketplaces."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+        market_dir.mkdir(parents=True)
+        cache_dir.mkdir(parents=True)
+
+        for name in ["market-a", "market-b"]:
+            ref = {
+                "name": name,
+                "url": f"https://example.com/{name}.yml",
+                "enabled": True,
+            }
+            cache = {
+                "name": name,
+                "version": "1.0.0",
+                "url": f"https://example.com/{name}.yml",
+                "modules": [
+                    {
+                        "name": "mod1",
+                        "description": "Module",
+                        "version": "1.0.0",
+                        "repository": f"https://github.com/{name}/mod.git",
+                    }
+                ],
+                "bundles": {
+                    "shared/bundle": {
+                        "description": f"Bundle from {name}",
+                        "modules": ["mod1"],
+                    },
+                },
+            }
+
+            with open(market_dir / f"{name}.yml", "w") as f:
+                yaml.dump(ref, f)
+            with open(cache_dir / f"{name}.yml", "w") as f:
+                yaml.dump(cache, f)
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        matches = registry.search_bundle_all("shared/bundle")
+
+        assert len(matches) == 2
+        marketplaces = {m[1] for m in matches}
+        assert marketplaces == {"market-a", "market-b"}
+
+    def test_search_bundle_all_no_matches(self, marketplace_with_bundles):
+        """Return empty list when bundle not found."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        matches = registry.search_bundle_all("nonexistent/bundle")
+
+        assert matches == []
+
+
+class TestMarketplaceRegistryListBundles:
+    """Tests for MarketplaceRegistry.list_bundles()."""
+
+    def test_list_bundles_empty(self, tmp_path, capsys):
+        """No bundles found across marketplaces."""
+        market_dir = tmp_path / "market"
+        cache_dir = market_dir / "cache"
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.list_bundles()
+
+        captured = capsys.readouterr()
+        assert "No marketplaces registered" in captured.out
+
+    def test_list_bundles_no_bundles_in_marketplaces(
+        self, marketplace_with_modules, capsys
+    ):
+        """Marketplaces exist but have no bundles."""
+        market_dir = marketplace_with_modules["market_dir"]
+        cache_dir = marketplace_with_modules["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.list_bundles()
+
+        captured = capsys.readouterr()
+        assert "No bundles found" in captured.out
+
+    def test_list_bundles_with_bundles(self, marketplace_with_bundles, capsys):
+        """List bundles from marketplace."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.list_bundles()
+
+        captured = capsys.readouterr()
+        assert "teamA/engineer" in captured.out
+        assert "official" in captured.out
+        assert "Standard engineer toolkit" in captured.out
+
+
+class TestMarketplaceRegistryShowBundle:
+    """Tests for MarketplaceRegistry.show_bundle()."""
+
+    def test_show_bundle_found(self, marketplace_with_bundles, capsys):
+        """Show bundle details."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show_bundle("teamA/engineer")
+
+        captured = capsys.readouterr()
+        assert "teamA/engineer" in captured.out
+        assert "Standard engineer toolkit" in captured.out
+        assert "official" in captured.out
+        assert "git-workflow" in captured.out
+        assert "code-review" in captured.out
+
+    def test_show_bundle_not_found(self, marketplace_with_bundles, capsys):
+        """Show non-existent bundle shows error."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show_bundle("nonexistent/bundle")
+
+        captured = capsys.readouterr()
+        assert "not found" in captured.out
+
+    def test_show_bundle_displays_module_descriptions(
+        self, marketplace_with_bundles, capsys
+    ):
+        """Show bundle includes module descriptions from marketplace."""
+        market_dir = marketplace_with_bundles["market_dir"]
+        cache_dir = marketplace_with_bundles["cache_dir"]
+
+        registry = MarketplaceRegistry(market_dir, cache_dir)
+        registry.show_bundle("teamA/engineer")
+
+        captured = capsys.readouterr()
+        assert "Git workflow automation" in captured.out
+        assert "Code review tools" in captured.out

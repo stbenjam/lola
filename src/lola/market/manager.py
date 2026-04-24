@@ -195,6 +195,163 @@ class MarketplaceRegistry:
 
         return prompt_select_marketplace(matches)
 
+    def search_bundle(self, bundle_name: str) -> tuple[dict, str] | None:
+        """
+        Search for a bundle by name across all enabled marketplaces.
+
+        Returns:
+            Tuple of (bundle_dict, marketplace_name) if found, None otherwise
+        """
+        for ref_file in self.market_dir.glob("*.yml"):
+            marketplace_ref = Marketplace.from_reference(ref_file)
+
+            if not marketplace_ref.enabled:
+                continue
+
+            cache_file = self.cache_dir / ref_file.name
+            if not cache_file.exists():
+                continue
+
+            marketplace = Marketplace.from_cache(cache_file)
+
+            if bundle_name in marketplace.bundles:
+                return marketplace.bundles[bundle_name], marketplace_ref.name
+
+        return None
+
+    def search_bundle_all(self, bundle_name: str) -> list[tuple[dict, str]]:
+        """
+        Search for a bundle by name across all enabled marketplaces.
+
+        Returns all matches, not just the first one.
+        """
+        matches = []
+
+        for ref_file in self.market_dir.glob("*.yml"):
+            marketplace_ref = Marketplace.from_reference(ref_file)
+
+            if not marketplace_ref.enabled:
+                continue
+
+            cache_file = self.cache_dir / ref_file.name
+            if not cache_file.exists():
+                continue
+
+            marketplace = Marketplace.from_cache(cache_file)
+
+            if bundle_name in marketplace.bundles:
+                matches.append((marketplace.bundles[bundle_name], marketplace_ref.name))
+
+        return matches
+
+    def list_bundles(self) -> None:
+        """List all bundles across enabled marketplaces."""
+        ref_files = list(self.market_dir.glob("*.yml"))
+
+        if not ref_files:
+            self.console.print("[yellow]No marketplaces registered[/yellow]")
+            self.console.print(
+                "[dim]Use 'lola market add <name> <url>' to add a marketplace[/dim]"
+            )
+            return
+
+        has_bundles = False
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Bundle")
+        table.add_column("Modules", justify="right")
+        table.add_column("Marketplace")
+        table.add_column("Description")
+
+        for ref_file in sorted(ref_files):
+            marketplace_ref = Marketplace.from_reference(ref_file)
+            if not marketplace_ref.enabled:
+                continue
+
+            cache_file = self.cache_dir / ref_file.name
+            if not cache_file.exists():
+                continue
+
+            marketplace = Marketplace.from_cache(cache_file)
+
+            for bundle_name, bundle_data in sorted(marketplace.bundles.items()):
+                has_bundles = True
+                module_count = len(bundle_data.get("modules", []))
+                description = bundle_data.get("description", "")
+                table.add_row(
+                    bundle_name,
+                    str(module_count),
+                    marketplace_ref.name,
+                    description,
+                )
+
+        if has_bundles:
+            self.console.print(table)
+        else:
+            self.console.print(
+                "[yellow]No bundles found across marketplaces[/yellow]"
+            )
+
+    def show_bundle(self, bundle_name: str) -> None:
+        """Show details of a bundle."""
+        matches = self.search_bundle_all(bundle_name)
+
+        if not matches:
+            self.console.print(f"[red]Bundle '{bundle_name}' not found[/red]")
+            self.console.print(
+                "[dim]Use 'lola bundle ls' to see available bundles[/dim]"
+            )
+            return
+
+        if len(matches) == 1:
+            bundle_data, marketplace_name = matches[0]
+        else:
+            # Reuse select_marketplace with compatible dict shape
+            compat_matches = [
+                (
+                    {
+                        "name": bundle_name,
+                        "description": bd.get("description", ""),
+                        "version": "",
+                    },
+                    mn,
+                )
+                for bd, mn in matches
+            ]
+            selected = self.select_marketplace(bundle_name, compat_matches)
+            if selected is None:
+                return
+            bundle_data = next(bd for bd, mn in matches if mn == selected)
+            marketplace_name = selected
+
+        self.console.print(f"[bold]{bundle_name}[/bold]")
+        description = bundle_data.get("description", "")
+        if description:
+            self.console.print(f"[dim]  {description}[/dim]")
+        self.console.print(f"[dim]  Marketplace: {marketplace_name}[/dim]")
+        self.console.print()
+
+        # Load marketplace to look up module descriptions
+        cache_file = self.cache_dir / f"{marketplace_name}.yml"
+        module_descriptions: dict[str, str] = {}
+        if cache_file.exists():
+            marketplace = Marketplace.from_cache(cache_file)
+            for mod in marketplace.modules:
+                module_descriptions[mod.get("name", "")] = mod.get("description", "")
+
+        bundle_modules = bundle_data.get("modules", [])
+        if not bundle_modules:
+            self.console.print("[yellow]No modules in this bundle[/yellow]")
+            return
+
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Module")
+        table.add_column("Description")
+
+        for mod_name in bundle_modules:
+            table.add_row(mod_name, module_descriptions.get(mod_name, ""))
+
+        self.console.print(table)
+
     def search(self, query: str) -> None:
         """Search for modules across all enabled marketplaces."""
         ref_files = list(self.market_dir.glob("*.yml"))

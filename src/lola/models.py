@@ -426,6 +426,7 @@ class Marketplace:
     description: str = ""
     version: str = ""
     modules: list[dict] = field(default_factory=list)
+    bundles: dict[str, dict] = field(default_factory=dict)
 
     @classmethod
     def from_reference(cls, ref_file: Path) -> "Marketplace":
@@ -450,6 +451,7 @@ class Marketplace:
             description=data.get("description", ""),
             version=data.get("version", ""),
             modules=data.get("modules", []),
+            bundles=data.get("bundles", {}),
         )
 
     @classmethod
@@ -494,6 +496,7 @@ class Marketplace:
             description=data.get("description", ""),
             version=data.get("version", ""),
             modules=data.get("modules", []),
+            bundles=data.get("bundles", {}),
         )
 
     def validate(self) -> tuple[bool, list[str]]:
@@ -514,6 +517,19 @@ class Marketplace:
                 if field_name not in mod:
                     errors.append(f"Module {i}: missing '{field_name}'")
 
+        module_names = {mod.get("name") for mod in self.modules}
+        for bundle_name, bundle_data in self.bundles.items():
+            if not bundle_name:
+                errors.append("Bundle name cannot be empty")
+            bundle_modules = bundle_data.get("modules", [])
+            if not bundle_modules:
+                errors.append(f"Bundle '{bundle_name}': modules list is empty")
+            for mod_name in bundle_modules:
+                if mod_name not in module_names:
+                    errors.append(
+                        f"Bundle '{bundle_name}': references unknown module '{mod_name}'"
+                    )
+
         return len(errors) == 0, errors
 
     def to_reference_dict(self) -> dict:
@@ -526,7 +542,7 @@ class Marketplace:
 
     def to_cache_dict(self) -> dict:
         """Convert to dict for cache file."""
-        return {
+        result = {
             "name": self.name,
             "description": self.description,
             "version": self.version,
@@ -534,6 +550,9 @@ class Marketplace:
             "enabled": self.enabled,
             "modules": self.modules,
         }
+        if self.bundles:
+            result["bundles"] = self.bundles
+        return result
 
 
 @dataclass

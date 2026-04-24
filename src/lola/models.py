@@ -427,6 +427,35 @@ class Marketplace:
     version: str = ""
     modules: list[dict] = field(default_factory=list)
     bundles: dict[str, dict] = field(default_factory=dict)
+    id: str = ""
+    sources: list[dict] = field(default_factory=list)
+    canonical_id: str = ""
+
+    @staticmethod
+    def _url_to_canonical_id(url: str) -> str:
+        """Derive a Go-style canonical ID from a URL.
+
+        Examples:
+            https://github.com/stbenjam/agentic-toolbox.git
+              → github.com/stbenjam/agentic-toolbox
+            https://gitlab.com/org/repo
+              → gitlab.com/org/repo
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        path = parsed.path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        # Strip filename components (market.yml, etc.)
+        for ext in (".yml", ".yaml", ".json"):
+            if path.endswith(ext):
+                path = path.rsplit("/", 1)[0] if "/" in path else ""
+                break
+        if not host or not path:
+            return ""
+        return f"{host}/{path}"
 
     @classmethod
     def from_reference(cls, ref_file: Path) -> "Marketplace":
@@ -437,6 +466,9 @@ class Marketplace:
             name=data.get("name", ""),
             url=data.get("url", ""),
             enabled=data.get("enabled", True),
+            id=data.get("id", ""),
+            canonical_id=data.get("canonical_id", ""),
+            sources=data.get("sources", []),
         )
 
     @classmethod
@@ -452,6 +484,9 @@ class Marketplace:
             version=data.get("version", ""),
             modules=data.get("modules", []),
             bundles=data.get("bundles", {}),
+            id=data.get("id", ""),
+            canonical_id=data.get("canonical_id", ""),
+            sources=data.get("sources", []),
         )
 
     @classmethod
@@ -543,6 +578,9 @@ class Marketplace:
             version=data.get("version", ""),
             modules=data.get("modules", []),
             bundles=data.get("bundles", {}),
+            id=data.get("id", ""),
+            canonical_id=cls._url_to_canonical_id(url),
+            sources=data.get("sources", []),
         )
 
     def validate(self) -> tuple[bool, list[str]]:
@@ -575,25 +613,37 @@ class Marketplace:
             bundle_modules = bundle_data.get("modules", [])
             if not bundle_modules:
                 errors.append(f"Bundle '{bundle_name}': modules list is empty")
-            for mod_name in bundle_modules:
-                if mod_name not in module_names:
+            for mod_entry in bundle_modules:
+                # Cross-marketplace refs (@id/module) and version specs are valid
+                if mod_entry.startswith("@") or any(
+                    op in mod_entry for op in (">=", "<=", "==", "!=", "~", "^", ">", "<")
+                ):
+                    continue
+                if mod_entry not in module_names:
                     errors.append(
-                        f"Bundle '{bundle_name}': references unknown module '{mod_name}'"
+                        f"Bundle '{bundle_name}': references unknown module '{mod_entry}'"
                     )
 
         return len(errors) == 0, errors
 
     def to_reference_dict(self) -> dict:
         """Convert to dict for reference file."""
-        return {
+        result: dict = {
             "name": self.name,
             "url": self.url,
             "enabled": self.enabled,
         }
+        if self.id:
+            result["id"] = self.id
+        if self.canonical_id:
+            result["canonical_id"] = self.canonical_id
+        if self.sources:
+            result["sources"] = self.sources
+        return result
 
     def to_cache_dict(self) -> dict:
         """Convert to dict for cache file."""
-        result = {
+        result: dict = {
             "name": self.name,
             "description": self.description,
             "version": self.version,
@@ -603,6 +653,12 @@ class Marketplace:
         }
         if self.bundles:
             result["bundles"] = self.bundles
+        if self.id:
+            result["id"] = self.id
+        if self.canonical_id:
+            result["canonical_id"] = self.canonical_id
+        if self.sources:
+            result["sources"] = self.sources
         return result
 
 

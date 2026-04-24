@@ -184,6 +184,13 @@ def bundle_install_cmd(
     )
     console.print()
 
+    # Load marketplace sources for cross-marketplace resolution
+    cache_file = CACHE_DIR / f"{marketplace_name}.yml"
+    marketplace_sources: list[dict] = []
+    if cache_file.exists():
+        mp_cached = Marketplace.from_cache(cache_file)
+        marketplace_sources = mp_cached.sources
+
     local_modules = get_local_modules_path(project_path)
     registry = get_registry()
     installed_count = 0
@@ -191,8 +198,33 @@ def bundle_install_cmd(
     failed_modules: list[tuple[str, str]] = []
 
     from lola.cli.mod import load_registered_module
+    from lola.market.manager import parse_market_ref
+    from lola.sync import parse_lolareq_line
 
-    for mod_name in bundle_modules:
+    for i, entry in enumerate(bundle_modules):
+        # Parse entry using lola-req syntax (supports version specs and @-refs)
+        spec = parse_lolareq_line(entry, i + 1)
+        if not spec:
+            continue
+
+        # Determine which marketplace to fetch from and the module name
+        market_ref = parse_market_ref(spec.module_ref)
+        if market_ref:
+            mp_id, mod_name = market_ref
+            resolved_mp = mp_registry.find_marketplace(mp_id)
+            if not resolved_mp:
+                resolved_mp = mp_registry.auto_add_source(mp_id, marketplace_sources)
+            if not resolved_mp:
+                console.print(
+                    f"[red]Marketplace '{mp_id}' not found for '{entry}'[/red]"
+                )
+                failed_modules.append((entry, f"marketplace '{mp_id}' not found"))
+                continue
+            fetch_marketplace = resolved_mp
+        else:
+            mod_name = spec.module_ref
+            fetch_marketplace = marketplace_name
+
         # Check if already installed for all requested assistants
         existing = registry.find(mod_name)
         already_installed = {
@@ -217,13 +249,22 @@ def bundle_install_cmd(
         if not module_path.exists():
             try:
                 module_path, module_dict = _fetch_module_from_marketplace(
-                    marketplace_name, mod_name
+                    fetch_marketplace, mod_name
                 )
                 console.print(f"[green]Fetched '{mod_name}'[/green]")
             except Exception as e:
                 console.print(f"[red]Failed to fetch '{mod_name}': {e}[/red]")
                 failed_modules.append((mod_name, str(e)))
                 continue
+
+        # Version check if spec has version_spec
+        fetched_version = module_dict.get("version") if module_dict else None
+        if spec.version_spec and fetched_version:
+            if not spec.matches_version(fetched_version):
+                console.print(
+                    f"[yellow]Warning: '{mod_name}' version {fetched_version} "
+                    f"does not match {spec.version_spec}[/yellow]"
+                )
 
         module = load_registered_module(module_path)
         if not module:

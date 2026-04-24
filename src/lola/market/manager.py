@@ -19,17 +19,25 @@ def parse_market_ref(module_name: str) -> tuple[str, str] | None:
     """
     Parse marketplace reference from module name.
 
-    Args:
-        module_name: Module name with marketplace prefix (@marketplace/module)
+    Supports both short IDs and Go-style canonical paths:
+        @common/ci          → ("common", "ci")
+        @github.com/org/repo/ci → ("github.com/org/repo", "ci")
+
+    The last path segment is always the module name; everything before it
+    is the marketplace identifier.
 
     Returns:
-        Tuple of (marketplace_name, module_name) if valid, None otherwise
+        Tuple of (marketplace_identifier, module_name) or None.
     """
-    if module_name.startswith("@") and "/" in module_name:
-        parts = module_name[1:].split("/", 1)
-        if len(parts) == 2:
-            return parts[0], parts[1]
-    return None
+    if not module_name.startswith("@") or "/" not in module_name:
+        return None
+    path = module_name[1:]
+    last_slash = path.rfind("/")
+    marketplace_id = path[:last_slash]
+    mod_name = path[last_slash + 1:]
+    if not marketplace_id or not mod_name:
+        return None
+    return marketplace_id, mod_name
 
 
 def validate_marketplace_name(name: str) -> str:
@@ -104,6 +112,61 @@ class MarketplaceRegistry:
             )
         except ValueError as e:
             self.console.print(f"[red]Error: {e}[/red]")
+
+    def find_marketplace(self, identifier: str) -> str | None:
+        """Find a registered marketplace by declared id, canonical_id, or user-chosen name.
+
+        Returns the user-chosen name (filename stem) used for file lookups, or None.
+        """
+        for ref_file in self.market_dir.glob("*.yml"):
+            mp = Marketplace.from_reference(ref_file)
+            user_name = ref_file.stem
+            if identifier == user_name:
+                return user_name
+            if mp.id and identifier == mp.id:
+                return user_name
+            if mp.canonical_id and identifier == mp.canonical_id:
+                return user_name
+        return None
+
+    def auto_add_source(self, identifier: str, sources: list[dict]) -> str | None:
+        """Auto-add a marketplace from a sources list.
+
+        Searches `sources` for an entry matching `identifier` by `id` or
+        canonical URL path. If found and not already registered, adds it.
+
+        Returns the marketplace name if added/found, None otherwise.
+        """
+        for source in sources:
+            src_id = source.get("id", "")
+            src_url = source.get("url", "")
+            src_canonical = Marketplace._url_to_canonical_id(src_url) if src_url else ""
+
+            if identifier not in (src_id, src_canonical):
+                continue
+
+            # Use the source id as the marketplace name
+            mp_name = src_id or src_canonical.replace("/", "-")
+            if not mp_name:
+                continue
+
+            # Already registered?
+            existing = self.find_marketplace(mp_name)
+            if existing:
+                return existing
+
+            self.console.print(
+                f"[dim]Auto-adding marketplace '{mp_name}' from {src_url}[/dim]"
+            )
+            self.add(mp_name, src_url)
+
+            # Verify it was actually added
+            ref_file = self.market_dir / f"{mp_name}.yml"
+            if ref_file.exists():
+                return mp_name
+            return None
+
+        return None
 
     def search_module(self, module_name: str) -> tuple[dict, str] | None:
         """

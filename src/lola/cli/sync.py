@@ -265,22 +265,30 @@ def resolve_and_fetch_module(spec: ModuleSpec, verbose: bool) -> tuple[str, dict
     # Check if it's a marketplace reference (@marketplace/module)
     marketplace_ref = parse_market_ref(spec.module_ref)
     if marketplace_ref:
-        marketplace_name, module_name = marketplace_ref
+        mp_identifier, module_name = marketplace_ref
         module_path = MODULES_DIR / module_name
+
+        # Resolve marketplace by id, canonical_id, or user-chosen name
+        mp_registry = MarketplaceRegistry(MARKET_DIR, CACHE_DIR)
+        resolved_name = mp_registry.find_marketplace(mp_identifier)
+        if not resolved_name:
+            raise ValueError(
+                f"Marketplace '{mp_identifier}' not found for '{spec.module_ref}'"
+            )
 
         # Fetch from marketplace if not in registry
         if not module_path.exists():
             if verbose:
                 console.print(
-                    f"[dim]Fetching {module_name} from {marketplace_name}...[/dim]"
+                    f"[dim]Fetching {module_name} from {resolved_name}...[/dim]"
                 )
             _, module_dict = _fetch_from_marketplace_quiet(
-                marketplace_name, module_name
+                resolved_name, module_name
             )
             return module_name, module_dict
         else:
             # Already in registry, try to get module dict from cache
-            cache_file = CACHE_DIR / f"{marketplace_name}.yml"
+            cache_file = CACHE_DIR / f"{resolved_name}.yml"
             if cache_file.exists():
                 marketplace = Marketplace.from_cache(cache_file)
                 module_dict = next(

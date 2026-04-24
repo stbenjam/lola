@@ -876,6 +876,23 @@ def install_cmd(
                     inst.version = version
                     registry.add(inst)  # Update the record
 
+    if module.setup and total_installed > 0:
+        from lola.setup import check_all
+
+        results = check_all(module)
+        unmet = [(dep, msg) for dep, ok, msg in results if not ok]
+        if unmet:
+            console.print()
+            console.print(
+                f"[yellow]This module has {len(unmet)} unmet setup "
+                f"requirement{'s' if len(unmet) != 1 else ''}:[/yellow]"
+            )
+            for dep, _msg in unmet:
+                console.print(f"  [dim]- {dep.name}: {dep.description}[/dim]")
+            console.print(
+                f"[dim]Run 'lola setup {module_name}' to configure.[/dim]"
+            )
+
     console.print()
     console.print(
         f"[green]Installed to {len(assistants_to_install)} assistant{'s' if len(assistants_to_install) != 1 else ''}[/green]"

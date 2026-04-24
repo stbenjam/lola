@@ -109,12 +109,18 @@ def bundle():
     is_flag=True,
     help="Overwrite existing skills without prompting",
 )
+@click.option(
+    "--skip-setup",
+    is_flag=True,
+    help="Skip running setup for module dependencies",
+)
 @click.argument("project_path", required=False, default="./")
 def bundle_install_cmd(
     bundle_name: str,
     assistant: Optional[str],
     verbose: bool,
     force: bool,
+    skip_setup: bool,
     project_path: str,
 ):
     """
@@ -190,6 +196,7 @@ def bundle_install_cmd(
     installed_count = 0
     skipped_count = 0
     failed_modules: list[tuple[str, str]] = []
+    loaded_modules: list = []
 
     from lola.cli.mod import load_registered_module
 
@@ -231,6 +238,8 @@ def bundle_install_cmd(
             console.print(f"[red]Failed to load '{mod_name}': invalid module[/red]")
             failed_modules.append((mod_name, "invalid module"))
             continue
+
+        loaded_modules.append(module)
 
         is_valid, errors = module.validate()
         if not is_valid:
@@ -294,6 +303,58 @@ def bundle_install_cmd(
     if skipped_count:
         parts.append(f"{skipped_count} already installed")
     console.print(f"[green]{', '.join(parts)}[/green]")
+
+    # Run setup for modules with unmet dependencies
+    if not skip_setup:
+        from lola.setup import check_all, check_dependency, run_setup
+
+        modules_with_unmet = []
+        for module in loaded_modules:
+            if not module.setup:
+                continue
+            results = check_all(module)
+            unmet = [(dep, msg) for dep, ok, msg in results if not ok]
+            if unmet:
+                modules_with_unmet.append((module, unmet))
+
+        if modules_with_unmet:
+            console.print()
+            total_unmet = sum(len(u) for _, u in modules_with_unmet)
+            console.print(
+                f"[bold]Running setup for {total_unmet} unmet "
+                f"requirement{'s' if total_unmet != 1 else ''} "
+                f"across {len(modules_with_unmet)} module(s)...[/bold]"
+            )
+
+            for module, unmet in modules_with_unmet:
+                for dep, _msg in unmet:
+                    if not dep.install:
+                        console.print(
+                            f"  [yellow]{module.name}/{dep.name}[/yellow]: "
+                            f"no install script — configure manually"
+                        )
+                        continue
+                    console.print()
+                    console.print(
+                        f"[bold]Setting up {module.name}/{dep.name}[/bold] "
+                        f"— {dep.description}"
+                    )
+                    success = run_setup(dep, module)
+                    if success:
+                        ok_now, _ = check_dependency(dep, module)
+                        if ok_now:
+                            console.print(
+                                f"  [green]ok[/green]  {dep.name} — configured"
+                            )
+                        else:
+                            console.print(
+                                f"  [yellow]warning[/yellow]  {dep.name} "
+                                f"— script finished but check still fails"
+                            )
+                    else:
+                        console.print(
+                            f"  [red]error[/red]  {dep.name} — setup failed"
+                        )
 
     if failed_modules:
         console.print()

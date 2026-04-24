@@ -126,6 +126,16 @@ INSTRUCTIONS_FILE = "AGENTS.md"
 
 
 @dataclass
+class SetupDependency:
+    """Represents a setup dependency for a module (tool, auth, env var)."""
+
+    name: str
+    description: str
+    check: str
+    install: str | None = None
+
+
+@dataclass
 class Module:
     """Represents a lola module."""
 
@@ -149,6 +159,7 @@ class Module:
     post_install_hook: Optional[str] = (
         None  # Path to post-install script (relative to content_path)
     )
+    setup: list[SetupDependency] = field(default_factory=list)
 
     @classmethod
     def from_path(
@@ -231,9 +242,10 @@ class Module:
             except (json.JSONDecodeError, OSError):
                 pass
 
-        # Auto-discover hooks from lola.yaml
+        # Auto-discover hooks and setup dependencies from lola.yaml
         pre_install_hook = None
         post_install_hook = None
+        setup_deps: list[SetupDependency] = []
         lola_yaml = content_path / "lola.yaml"
         if lola_yaml.exists():
             try:
@@ -246,16 +258,33 @@ class Module:
                 post_install_hook = (
                     hooks.get("post-install") if isinstance(hooks, dict) else None
                 )
+                setup_list = config.get("setup", [])
+                if isinstance(setup_list, list):
+                    for entry in setup_list:
+                        if (
+                            isinstance(entry, dict)
+                            and "name" in entry
+                            and "check" in entry
+                        ):
+                            setup_deps.append(
+                                SetupDependency(
+                                    name=entry["name"],
+                                    description=entry.get("description", ""),
+                                    check=entry["check"],
+                                    install=entry.get("install"),
+                                )
+                            )
             except (yaml.YAMLError, OSError):
-                pass  # hooks are optional; malformed lola.yaml is non-fatal
+                pass  # lola.yaml is optional; malformed lola.yaml is non-fatal
 
-        # Only valid if has at least one skill, command, agent, mcp, or instructions
+        # Only valid if has at least one skill, command, agent, mcp, instructions, or setup dep
         if (
             not skills
             and not commands
             and not agents
             and not mcps
             and not has_instructions
+            and not setup_deps
         ):
             return None
 
@@ -272,6 +301,7 @@ class Module:
             is_single_skill=is_single_skill,
             pre_install_hook=pre_install_hook,
             post_install_hook=post_install_hook,
+            setup=setup_deps,
         )
 
     @classmethod
@@ -401,6 +431,20 @@ class Module:
                 full_path.resolve().relative_to(self.path.resolve())
             except ValueError:
                 errors.append(f"{hook_type} hook outside module directory: {hook_path}")
+
+        # Validate setup dependency install scripts (only file paths, not inline commands)
+        for dep in self.setup:
+            if not dep.install:
+                continue
+            full_path = self.content_path / dep.install
+            if not full_path.exists():
+                continue  # may be an inline command, not a file path
+            try:
+                full_path.resolve().relative_to(self.path.resolve())
+            except ValueError:
+                errors.append(
+                    f"setup '{dep.name}' install script outside module directory: {dep.install}"
+                )
 
         return len(errors) == 0, errors
 

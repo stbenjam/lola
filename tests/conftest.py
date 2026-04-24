@@ -36,6 +36,7 @@ def mock_lola_home(tmp_path):
         patch("lola.cli.mod.MODULES_DIR", modules_dir),
         patch("lola.cli.mod.INSTALLED_FILE", lola_home / "installed.yml"),
         patch("lola.cli.install.MODULES_DIR", modules_dir),
+        patch("lola.cli.setup.MODULES_DIR", modules_dir),
     ):
         yield {
             "home": lola_home,

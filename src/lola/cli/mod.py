@@ -1033,6 +1033,19 @@ def module_info(module_name_or_path: str | None):
                     cmd_str += " ..."
                 console.print(f"    [dim]{cmd_str[:60]}[/dim]")
 
+    # Setup dependencies
+    if module.setup:
+        from lola.setup import check_all
+
+        console.print()
+        console.print("[bold]Setup Dependencies[/bold]")
+        results = check_all(module)
+        for dep, ok, _msg in results:
+            status = "[green]ok[/green]" if ok else "[red]missing[/red]"
+            console.print(f"  {status}  {dep.name}")
+            if dep.description:
+                console.print(f"    [dim]{dep.description}[/dim]")
+
     # Source info
     source_info = load_source_info(module.path)
     if source_info:

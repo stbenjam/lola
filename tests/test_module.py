@@ -1,4 +1,4 @@
-"""Tests for Module model including hook discovery."""
+"""Tests for Module model including hook and setup dependency discovery."""
 
 from lola.models import Module
 
@@ -260,3 +260,83 @@ def test_module_validate_partial_missing_hook(tmp_path):
     assert not is_valid
     assert any("post-install hook script not found" in err for err in errors)
     assert not any("pre-install" in err for err in errors)
+
+
+def test_module_with_setup_dependencies(tmp_path):
+    """Test that setup dependencies are discovered from lola.yaml."""
+    module_dir = tmp_path / "test-module"
+    module_dir.mkdir()
+
+    lola_yaml = module_dir / "lola.yaml"
+    lola_yaml.write_text("""setup:
+  - name: gh
+    description: GitHub CLI
+    check: which gh
+    install: scripts/install-gh.sh
+  - name: python3
+    description: Python runtime
+    check: python3 --version
+""")
+
+    skills_dir = module_dir / "skills" / "test-skill"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text(VALID_SKILL_MD)
+
+    module = Module.from_path(module_dir)
+    assert module is not None
+    assert len(module.setup) == 2
+    assert module.setup[0].name == "gh"
+    assert module.setup[0].check == "which gh"
+    assert module.setup[0].install == "scripts/install-gh.sh"
+    assert module.setup[1].name == "python3"
+    assert module.setup[1].install is None
+
+
+def test_module_with_hooks_and_setup(tmp_path):
+    """Test that hooks and setup can coexist in lola.yaml."""
+    module_dir = tmp_path / "test-module"
+    module_dir.mkdir()
+
+    lola_yaml = module_dir / "lola.yaml"
+    lola_yaml.write_text("""hooks:
+  pre-install: scripts/pre.sh
+setup:
+  - name: tool
+    description: A tool
+    check: which tool
+""")
+
+    skills_dir = module_dir / "skills" / "test-skill"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text(VALID_SKILL_MD)
+
+    module = Module.from_path(module_dir)
+    assert module is not None
+    assert module.pre_install_hook == "scripts/pre.sh"
+    assert len(module.setup) == 1
+    assert module.setup[0].name == "tool"
+
+
+def test_module_with_module_subdir_setup(tmp_path):
+    """Test that setup works with module/ subdirectory."""
+    module_dir = tmp_path / "test-module"
+    module_dir.mkdir()
+
+    content_dir = module_dir / "module"
+    content_dir.mkdir()
+
+    lola_yaml = content_dir / "lola.yaml"
+    lola_yaml.write_text("""setup:
+  - name: tool
+    description: A tool
+    check: which tool
+""")
+
+    skills_dir = content_dir / "skills" / "test-skill"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text(VALID_SKILL_MD)
+
+    module = Module.from_path(module_dir)
+    assert module is not None
+    assert len(module.setup) == 1
+    assert module.setup[0].name == "tool"
